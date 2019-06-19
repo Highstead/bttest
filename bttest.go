@@ -95,6 +95,8 @@ func (t *tester) reader(ctx context.Context, client *bt.Client, myProfile string
 				continue
 			}
 
+			// there may be a better way to avoid clock skew, but i can't think of it
+			now := time.Now()
 			ptime, err := getWriteTime(row)
 			if err != nil {
 				if err == context.Canceled {
@@ -104,9 +106,10 @@ func (t *tester) reader(ctx context.Context, client *bt.Client, myProfile string
 			}
 			if d, ok := delayMap[profile]; ok && d != ptime {
 				log.WithFields(log.Fields{
-					"profile": profile,
-					"delay":   time.Now().Sub(ptime),
-				}).Info("Got Time")
+					"read-profile":  myProfile,
+					"write-profile": profile,
+					"delay":         now.Sub(ptime),
+				}).Info("read time")
 			}
 			delayMap[profile] = ptime
 		}
@@ -119,15 +122,17 @@ func (t *tester) writer(ctx context.Context, group *errgroup.Group) error {
 	for {
 		for _, client := range t.clients {
 			for _, profile := range t.profiles {
-				tbl := client.Open("test")
 				group.Go(func() error {
+					tbl := client.Open("test")
 					mut := bigtable.NewMutation()
 					setWriteTime(mut, time.Now())
 
 					err := tbl.Apply(ctx, profile, mut)
+					log.WithField("profile", profile).Info("writing")
 
 					return err
 				})
+
 				select {
 				case <-time.After(writeDelay):
 				case <-ctx.Done():
@@ -140,6 +145,18 @@ func (t *tester) writer(ctx context.Context, group *errgroup.Group) error {
 }
 
 func getWriteTime(row bt.Row) (time.Time, error) {
+	if len(row[FAM]) == 0 {
+		return time.Time{}, errGet
+	}
+	ts := time.Duration(int64(row[FAM][0].Timestamp)) //bigtable uses microseconds, and timestamp is an int64
+
+	t := time.Unix(0, 0)
+	t = t.Add(time.Microsecond * ts)
+	return t, nil
+
+}
+
+func getQualTimeValue(row bt.Row) (time.Time, error) {
 	var value int64
 	if len(row[FAM]) == 0 {
 		return time.Time{}, errGet
