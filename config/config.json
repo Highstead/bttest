@@ -1,0 +1,5 @@
+{
+  "appProfiles": ["test-east", "test-central"],
+  "instance": "test-instance",
+  "project": "test-project"
+}
