@@ -80,18 +80,13 @@ func (t *tester) reader(ctx context.Context, client *bt.Client, myProfile string
 	clt := client.Open("test")
 	delayMap := make(map[string]time.Time)
 	for {
-		// Don't hammer BT too hard.
 		for _, profile := range t.profiles {
-			// Don't check ourself
-			if profile == myProfile {
-				continue
-			}
 			row, err := clt.ReadRow(ctx, profile, bigtable.RowFilter(bigtable.ColumnFilter(QUAL)))
 			if err != nil {
 				if err == context.Canceled {
 					return err
 				}
-				log.WithError(err).Println("failed to get row: ", profile)
+				log.WithError(err).Println("failed to get row: ", myProfile)
 				continue
 			}
 
@@ -113,6 +108,7 @@ func (t *tester) reader(ctx context.Context, client *bt.Client, myProfile string
 			}
 			delayMap[profile] = ptime
 		}
+		// Don't hammer BT too hard.
 		<-time.After(readDelay)
 	}
 
